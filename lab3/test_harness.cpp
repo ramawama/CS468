@@ -89,7 +89,22 @@ int main(int argc, char* argv[])
 
     /* Include your setup code below (temp variables, function calls, etc.) */
     
-    
+    // compiled with gcc, so no cuda code here. 
+    // call opt_2dhisto_setup;
+    // convert to flat 1D matrix first, 
+
+    // allocate memory for 1D matrix,
+    // size = size of 2D mattrix * uint32_t for each input
+    uint32_t *flat_input = (uint32_t*)malloc(INPUT_HEIGHT*INPUT_WIDTH*sizeof(uint32_t)); 
+    // now populate it
+    for (int i = 0; i < INPUT_HEIGHT; i++){
+        for (int j = 0; j < INPUT_WIDTH; j++){
+            // go row by row
+            // flat_nput[1*width+1] = input[1][1]
+            flat_input[i*INPUT_WIDTH+j] = input[i][j];
+        }
+    }
+    opt_2dhisto_setup(flat_input, INPUT_HEIGHT, INPUT_WIDTH);
 
 
     /* End of setup code */
@@ -97,9 +112,12 @@ int main(int argc, char* argv[])
     /* This is the call you will use to time your parallel implementation */
     TIME_IT("opt_2dhisto",
             1000,
-            opt_2dhisto( /*Define your own function parameters*/ );)
+            opt_2dhisto(INPUT_HEIGHT*INPUT_WDITH, HISTO_HEIGHT*HISTO_WIDTH);)
 
     /* Include your teardown code below (temporary variables, function calls, etc.) */
+    
+    opt2_2dhisto_teardown(kernel_bins);
+    free(flat_input);
 
 
 
