@@ -63,10 +63,7 @@ void opt_2dhisto_teardown(uint8_t *bins){
 }
 
 
-__global__ void histo_kernel_gpu(const uint32_t * __restrict__ input, 
-                                 uint32_t * __restrict__ bins_32, 
-                                 uint32_t input_size, 
-                                 uint16_t bin_size) {
+__global__ void histo_kernel_gpu(const uint32_t * __restrict__ input, uint32_t * __restrict__ bins_32, uint32_t input_size, uint16_t bin_size) {
     __shared__ uint32_t local_hist[HISTO_HEIGHT * HISTO_WIDTH];
     
     #pragma unroll 4  
@@ -128,9 +125,7 @@ __global__ void histo_kernel_gpu(const uint32_t * __restrict__ input,
 
 
 
-__global__ void bin_reduction_gpu(const uint32_t * __restrict__ bins_32, 
-                                  uint8_t * __restrict__ bins_8, 
-                                  uint16_t bin_size) {
+__global__ void bin_reduction_gpu(const uint32_t * __restrict__ bins_32, uint8_t * __restrict__ bins_8, uint16_t bin_size) {
     uint32_t idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx >= bin_size) return;
 

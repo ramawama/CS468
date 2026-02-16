@@ -1,0 +1,59 @@
+Optimization Report
+Novel Alam, JGH4015
+Rama Janco XRF0050
+
+1. Baseline: Global 8-bit Atomic Addition (Failed)
+Goal: Implement simple parallel version using atomicAdd directly on final uint8_t output array.
+Changes: Created single kernel where each thread calculated bin index and attempted 8-bit atomic increment.
+Difficulties: Standard CUDA atomicAdd does not natively support 8-bit saturation. Counters rolled over from 255 to 0. Test failed.
+Man-Hours: 40 mins.
+Cumulative Speedup: N/A (Incorrect results).
+
+2. Global 32-bit Intermediate Buffer (Abandoned)
+Goal: Solve saturation issue by using 32-bit global array for counting followed by clamping pass.
+Changes: Allocated global uint32_t buffer. Each thread performed atomicAdd on this global buffer.
+Difficulties: Poor performance. High contention for same memory addresses due to non-uniform input distribution.
+Man-Hours: 1 hour.
+Cumulative Speedup: 0.4x (Slower than CPU reference).
+
+3. Shared Memory Privatization (Success)
+Goal: Reduce global memory contention by creating per-block mini-histograms in shared memory.
+Changes: Declared shared uint32_t local_hist[1024]. Used strided loop to zero out shared memory. Threads performed atomicAdd on local shared memory. Added final flush loop to global buffer.
+Difficulties: Indexing errors using global_idx instead of threadIdx.x for shared memory.
+Man-Hours: 2.5 hours.
+Cumulative Speedup: ~46x over CPU reference.
+
+4. Vectorized Memory Access (uint4) (Success)
+Goal: Increase memory bandwidth by reading four pixels at once.
+Changes: Casted input pointer to uint4. Manually unrolled processing of .x, .y, .z, .w components.
+Difficulties: Implemented tail handling for input sizes not divisible by 4. Fixed unsigned short overflow by upgrading parameters to uint32_t.
+Man-Hours: 2 hours.
+Cumulative Speedup: ~90x over CPU reference.
+
+5. Loop Unrolling and Branch Pruning (Refinement)
+Goal: Reduce instruction overhead.
+Changes: Applied pragma unroll to shared memory loops. Added count > 0 check before global atomicAdd to skip unnecessary writes.
+Difficulties: Minimal. Verified unrolling did not exceed register limits.
+Man-Hours: 30 mins.
+Cumulative Speedup: ~98x over CPU reference.
+
+6. 32-bit shared and global buffers + separate clamping kernel  (Success)
+Goal: Use uint32_t (32 bit) for all atomics since AtomicAdd is supported. Implement second kernel for clamping to uint8_t. 
+Description: Used uint32_t for shared + global buffers and added bin_reduction_gpu. First kernel accumulates raw counts. Second kernel performs clamping pass.
+Difficulties: Required synchronization between kernels. Extra memory allocation
+Man-Hours: 3 hour.
+Cumulative Speedup: ~102x over CPU reference
+
+7. Pointer Aliasing and Read-Only Caching (Success)
+Goal: Use const and restrict qualifiers to maximize compiler optimization.
+Changes: Updated signatures to const uint32_t* restrict input and uint32_t* restrict bins_32. Applied const to input for read-only status.
+Impact: Enabled LDG instructions to use read-only cache. Small speedup from better compiler optimization.
+Man-Hours: 30 mins.
+Cumulative Speedup: ~107x over CPU reference.
+
+8. Warp Level Merge (any_sync) (Success)
+Goal: Skip constant atomic adds when entire warp is zero.
+Changes: Utilized warp-level voting to check for empty data across all 32 threads.
+Difficulties: Mask selection and implementation of warp-wide predicates. Overall simple logic once mask logic was resolved.
+Man-Hours: 30min.
+Cumulative Speedup: 110x
