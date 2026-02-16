@@ -112,11 +112,11 @@ int main(int argc, char* argv[])
     /* This is the call you will use to time your parallel implementation */
     TIME_IT("opt_2dhisto",
             1000,
-            opt_2dhisto(INPUT_HEIGHT*INPUT_WDITH, HISTO_HEIGHT*HISTO_WIDTH);)
+            opt_2dhisto(INPUT_HEIGHT*INPUT_WIDTH, (uint16_t)HISTO_HEIGHT*HISTO_WIDTH);)
 
     /* Include your teardown code below (temporary variables, function calls, etc.) */
     
-    opt2_2dhisto_teardown(kernel_bins);
+    opt_2dhisto_teardown(kernel_bins);
     free(flat_input);
 
 
