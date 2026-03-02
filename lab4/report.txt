@@ -1,6 +1,33 @@
+Lab 4 Report
+Novel Alam, JGH4015
+Rama Janco XRF0050
+
+a.
 **===-------------------------------------------------===**
 Processing 16777216 elements...
-Host CPU Processing time: 24.048000 (ms)
-CUDA Processing time: 1.958000 (ms)
-Speedup: 12.281920X
+Host CPU Processing time: 26.712999 (ms)
+CUDA Processing time: 1.167000 (ms)
+Speedup: 22.890316X
 Test PASSED
+
+b.
+We handle arrays not a power of two in size with ceiling division.
+Since ELEMENTS_PER_BLOCK is calculated with
+ELEMENTS_PER_BLOCK = 2 * BLOCK_SIZE = 512 elements.
+And the number of blocks is computed with 
+numBlocks = (numElements + 511) / 512.
+We use ceiling division to ensure as many blocks are evenly filled. The last block may only be partially filled.
+Also, when loading inputs into shared memory, any index that maps beyond numElements is padded with zeroes, and the write-back ensures it's in bounds. So partially filled blocks don't go beyond their bounds.
+
+We minimized shared memory bank conflicts with padding, which is defined like below:
+CONFLICT_FREE_OFFSET(n) ((n) / NUM_BANKS)
+We also adjust the shared memory size:
+ELEMENTS_PER_BLOCK + ELEMENTS_PER_BLOCK/NUM_BANKS + 1
+This creates 529 slots to absorb the padding
+Every shared memory access also takes into account this padding by adding the CONFLICT_FREE_OFFSET so every strided acess are in different banks, helping minimize shared memory bank conflicts.
+
+Other optimizations include a three-level scanning process, which decomposes an arbitrary-length input.
+Level 1 scans all blocks, level 2 scans those block sums, and level 3 scans the group sums, which fits it all into one block.
+These sums are then propagated back globally.
+
+c.

@@ -7,11 +7,15 @@
 
 #define NUM_BANKS 32
 #define LOG_NUM_BANKS 5
-// Lab4: You can use any other block size you wish.
 #define BLOCK_SIZE 256
 
-// Lab4: Host Helper Functions (allocate your own data structure...)
 #define ELEMENTS_PER_BLOCK (BLOCK_SIZE * 2)
+
+// adds padding offset to avoid shared memory bank conflicts.
+#define CONFLICT_FREE_OFFSET(n) ((n) / NUM_BANKS)
+
+// padded shared memory size to avoid bank conflicts
+#define SHARED_MEM_SIZE (ELEMENTS_PER_BLOCK + (ELEMENTS_PER_BLOCK / NUM_BANKS) + 1)
 
 // Lab4: Device Functions
 
@@ -19,27 +23,31 @@
 // Lab4: Kernel Functions
 __global__ void scanBlock(float *outArray, float *inArray, float *blockSums, int numElements) {
     // use shared mem to scan each block reduce bank conflicts
-    // use reduction to compute partial sums of the array 
-    // then an exclsusive scan to compute the prefix sums for each block
+    // use reduction to compute partial sums of the array
+    // then an exclusive scan to compute the prefix sums for each block
     // swap+add method
 
-    __shared__ float sharedMem[ELEMENTS_PER_BLOCK];
+    // extra padding slots eliminate bank conflicts during strided access
+    __shared__ float sharedMem[SHARED_MEM_SIZE];
     int threadId = threadIdx.x;
-    int leftIndex = blockIdx.x * ELEMENTS_PER_BLOCK + threadId;
+    int leftIndex  = blockIdx.x * ELEMENTS_PER_BLOCK + threadId;
     int rightIndex = leftIndex + BLOCK_SIZE;
 
-    // populate shared memory with input array values with each thread loading 
-    // since each blocks processes 2*blockDim elem, each thread loads 2 at threadID
-    // pad 0 for out of bounds threads
+    // populate shared memory with padded indices for this thread's two elements
+    int leftSharedIndex  = threadId + CONFLICT_FREE_OFFSET(threadId);
+    int rightSharedIndex = threadId + BLOCK_SIZE + CONFLICT_FREE_OFFSET(threadId + BLOCK_SIZE);
+
+    // each thread loads 2 elements
+    // pad 0 for out of bounds
     if (leftIndex < numElements) {
-        sharedMem[threadId] = inArray[leftIndex];
+        sharedMem[leftSharedIndex] = inArray[leftIndex];
     } else {
-        sharedMem[threadId] = 0.0f; 
+        sharedMem[leftSharedIndex] = 0.0f;
     }
     if (rightIndex < numElements) {
-        sharedMem[threadId + BLOCK_SIZE] = inArray[rightIndex];
+        sharedMem[rightSharedIndex] = inArray[rightIndex];
     } else {
-        sharedMem[threadId + BLOCK_SIZE] = 0.0f; 
+        sharedMem[rightSharedIndex] = 0.0f;
     }
     // sync threads to ensure shared mem is populated
     __syncthreads();
@@ -51,21 +59,23 @@ __global__ void scanBlock(float *outArray, float *inArray, float *blockSums, int
         // each thread updates one elem in sm
         int index = (threadId + 1) * stride * 2 - 1;
         if (index < ELEMENTS_PER_BLOCK) {
-            // if in bounds, add val
-            sharedMem[index] += sharedMem[index - stride];
+            // if in bounds, add val using padded indices
+            int left  = index - stride;
+            sharedMem[index + CONFLICT_FREE_OFFSET(index)] += sharedMem[left + CONFLICT_FREE_OFFSET(left)];
         }
         stride *= 2;
         __syncthreads();
     }
 
     // exclusive scan w swap+add
-    // set last elem to 0, since it will be propogated
+    // set last elem to 0, since it will be propagated
     if (threadId == 0) {
-        // store first, then set to 0 
-        if (blockSums != NULL) {
-            blockSums[blockIdx.x] = sharedMem[ELEMENTS_PER_BLOCK - 1];
-        }
-        sharedMem[ELEMENTS_PER_BLOCK - 1] = 0.0f; 
+        // store first, then set to 0
+        int last = ELEMENTS_PER_BLOCK - 1;
+        int lastPadded = last + CONFLICT_FREE_OFFSET(last);
+        if (blockSums != NULL)
+            blockSums[blockIdx.x] = sharedMem[lastPadded];
+        sharedMem[lastPadded] = 0.0f;
     }
     __syncthreads();
 
@@ -75,24 +85,26 @@ __global__ void scanBlock(float *outArray, float *inArray, float *blockSums, int
         int index = (threadId + 1) * stride * 2 - 1;
         if (index < ELEMENTS_PER_BLOCK) {
             // left child = index-stride, right child = index
-            // swap, then add left child to right child
-            float left_val = sharedMem[index - stride];
-            sharedMem[index - stride] = sharedMem[index];
-            sharedMem[index] += left_val;
+            // swap, then add left child to right child using padded indices
+            int left = index - stride;
+            int leftPadded = left  + CONFLICT_FREE_OFFSET(left);
+            int rightPadded = index + CONFLICT_FREE_OFFSET(index);
+            float left_val = sharedMem[leftPadded];
+            sharedMem[leftPadded] = sharedMem[rightPadded];
+            sharedMem[rightPadded] += left_val;
         }
         // divide by 2 to swap+add next lvl / inside of block
         stride /= 2;
         __syncthreads();
     }
 
-    // write results to output from sm
-    if (leftIndex < numElements) {
-        outArray[leftIndex] = sharedMem[threadId];
+    // write results to output from sm using same padded indices as load
+    if (leftIndex  < numElements) {
+        outArray[leftIndex]  = sharedMem[leftSharedIndex];
     }
     if (rightIndex < numElements) {
-        outArray[rightIndex] = sharedMem[threadId + BLOCK_SIZE];
+        outArray[rightIndex] = sharedMem[rightSharedIndex];
     }
-
 }
 
 __global__ void addSums(float *outArray, float *blockSums, int numElements) {
