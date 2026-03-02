@@ -31,3 +31,6 @@ Level 1 scans all blocks, level 2 scans those block sums, and level 3 scans the 
 These sums are then propagated back globally.
 
 c.
+The GPU’s performance in flops is (33,554,432 + 0 + 2*0) / (1.167000ms * 10^-3) = 28.752 GFlops where 33,554,432 is the total number of floating additions and both 0s are the number of floating point multiplications and fused multiplications.
+The CPU’s performance in flops is (2 * 16,777,216) / 26.712999ms = 1.256 GFlops, where 16,777,216 is the number of iterations and 2 is the number of floating point adds per iteration.
+The theoretical max for GPU performance for the GeForce RTX 2060 SUPER is 7.18 TFlops which is way higher than our 28.752 Gflops. This discrepancy is due to prefix sum being a heavily memory-bound process so global memory latency as well as shared memory bank conflicts and kernel launch overheads are the reason the theoretical max was not hit. For the theoretical maximum of the CPU, I don’t have an actual number since, but I believe it’s closer to the maximum a CPU can achieve. The code has only one branch operation, and the main memory is continuously so spatial locality and temporal locality.
