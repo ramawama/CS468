@@ -344,7 +344,53 @@ __global__ void scanBlockHillisSteele(float *outArray, const float *inArray, flo
 __global__ __launch_bounds__(BLOCK_SIZE, 2)
 void scanBlockLaunchBounds(float *outArray, const float *inArray, float *blockSums, int numElements)
 {
-    scanBlockBase(outArray, inArray, blockSums, numElements);
+    __shared__ float sharedMem[ELEMENTS_PER_BLOCK];
+
+    int threadId = threadIdx.x;
+    int leftIndex = blockIdx.x * ELEMENTS_PER_BLOCK + threadId;
+    int rightIndex = leftIndex + BLOCK_SIZE;
+
+    sharedMem[threadId] = (leftIndex < numElements) ? inArray[leftIndex] : 0.0f;
+    sharedMem[threadId + BLOCK_SIZE] = (rightIndex < numElements) ? inArray[rightIndex] : 0.0f;
+
+    __syncthreads();
+
+    int stride = 1;
+    while (stride < ELEMENTS_PER_BLOCK) {
+        int index = (threadId + 1) * stride * 2 - 1;
+        if (index < ELEMENTS_PER_BLOCK) {
+            sharedMem[index] += sharedMem[index - stride];
+        }
+        stride <<= 1;
+        __syncthreads();
+    }
+
+    if (threadId == 0) {
+        if (blockSums != NULL) {
+            blockSums[blockIdx.x] = sharedMem[ELEMENTS_PER_BLOCK - 1];
+        }
+        sharedMem[ELEMENTS_PER_BLOCK - 1] = 0.0f;
+    }
+    __syncthreads();
+
+    stride = BLOCK_SIZE;
+    while (stride > 0) {
+        int index = (threadId + 1) * stride * 2 - 1;
+        if (index < ELEMENTS_PER_BLOCK) {
+            float t = sharedMem[index - stride];
+            sharedMem[index - stride] = sharedMem[index];
+            sharedMem[index] += t;
+        }
+        stride >>= 1;
+        __syncthreads();
+    }
+
+    if (leftIndex < numElements) {
+        outArray[leftIndex] = sharedMem[threadId];
+    }
+    if (rightIndex < numElements) {
+        outArray[rightIndex] = sharedMem[threadId + BLOCK_SIZE];
+    }
 }
 
 __global__ void scanBlock4(float *outArray, const float *inArray, float *blockSums, int numElements)
