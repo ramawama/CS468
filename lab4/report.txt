@@ -1,0 +1,6 @@
+**===-------------------------------------------------===**
+Processing 16777216 elements...
+Host CPU Processing time: 24.048000 (ms)
+CUDA Processing time: 1.958000 (ms)
+Speedup: 12.281920X
+Test PASSED
